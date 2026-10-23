@@ -94,7 +94,11 @@ def _handle_create_table(args, user_input, metadata):
     table_name = args[1]
     table_existed = table_name in metadata
     updated_metadata = create_table(metadata, table_name, args[2:])
-    if not table_existed and table_name in updated_metadata:
+    if (
+        updated_metadata is not None
+        and not table_existed
+        and table_name in updated_metadata
+    ):
         save_metadata(META_FILE, updated_metadata)
 
 
@@ -105,7 +109,11 @@ def _handle_drop_table(args, user_input, metadata):
     table_name = args[1]
     table_existed = table_name in metadata
     updated_metadata = drop_table(metadata, table_name)
-    if table_existed and table_name not in updated_metadata:
+    if (
+        updated_metadata is not None
+        and table_existed
+        and table_name not in updated_metadata
+    ):
         save_metadata(META_FILE, updated_metadata)
 
 
@@ -121,6 +129,8 @@ def _handle_insert(args, user_input, metadata):
 
     values = parse_values(values_text)
     updated_data = insert(metadata, table_name, values)
+    if updated_data is None:
+        return
     save_table_data(table_name, updated_data)
     record_id = updated_data[-1]["ID"]
     print(f'Запись с ID={record_id} успешно добавлена в таблицу "{table_name}".')
@@ -187,6 +197,8 @@ def _handle_delete(args, user_input, metadata):
     table_data = load_table_data(table_name)
     record_ids = [record["ID"] for record in select(table_data, where_clause)]
     updated_data = delete(table_data, where_clause)
+    if updated_data is None:
+        return
     save_table_data(table_name, updated_data)
     for record_id in record_ids:
         print(f'Запись с ID={record_id} успешно удалена из таблицы "{table_name}".')

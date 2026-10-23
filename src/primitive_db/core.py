@@ -1,12 +1,20 @@
 from primitive_db.constants import PYTHON_TYPES, VALID_TYPES
+from primitive_db.decorators import (
+    confirm_action,
+    create_cacher,
+    handle_db_errors,
+    log_time,
+)
 from primitive_db.utils import load_table_data
 
+cache_result = create_cacher()
 
+
+@handle_db_errors
 def create_table(metadata, table_name, columns):
     """Создаёт таблицу и добавляет её структуру в метаданные."""
     if table_name in metadata:
-        print(f'Ошибка: Таблица "{table_name}" уже существует.')
-        return metadata
+        raise ValueError(f'Таблица "{table_name}" уже существует.')
 
     for column in columns:
         column_parts = column.split(":")
@@ -15,8 +23,7 @@ def create_table(metadata, table_name, columns):
             or not column_parts[0]
             or column_parts[1] not in VALID_TYPES
         ):
-            print(f"Некорректное значение: {column}. Попробуйте снова.")
-            return metadata
+            raise ValueError(column)
 
     table_columns = ["ID:int", *columns]
     metadata[table_name] = table_columns
@@ -28,11 +35,12 @@ def create_table(metadata, table_name, columns):
     return metadata
 
 
+@handle_db_errors
+@confirm_action("удаление таблицы")
 def drop_table(metadata, table_name):
     """Удаляет таблицу из метаданных."""
     if table_name not in metadata:
-        print(f'Ошибка: Таблица "{table_name}" не существует.')
-        return metadata
+        raise KeyError(table_name)
 
     del metadata[table_name]
     print(f'Таблица "{table_name}" успешно удалена.')
@@ -45,6 +53,8 @@ def list_tables(metadata):
         print(f"- {table_name}")
 
 
+@handle_db_errors
+@log_time
 def insert(metadata, table_name, values):
     """Добавляет запись в таблицу и возвращает обновлённые данные."""
     if table_name not in metadata:
@@ -72,15 +82,27 @@ def insert(metadata, table_name, values):
     return [*table_data, record]
 
 
+@log_time
 def select(table_data, where_clause=None):
     """Возвращает все записи или записи, подходящие под условие."""
-    if where_clause is None:
-        return table_data
-    return [
-        record
-        for record in table_data
-        if all(record.get(column) == value for column, value in where_clause.items())
-    ]
+    cache_key = (
+        tuple(tuple(sorted(record.items())) for record in table_data),
+        tuple(sorted((where_clause or {}).items())),
+    )
+
+    def get_records():
+        if where_clause is None:
+            return table_data
+        return [
+            record
+            for record in table_data
+            if all(
+                record.get(column) == value
+                for column, value in where_clause.items()
+            )
+        ]
+
+    return cache_result(cache_key, get_records)
 
 
 def update(table_data, set_clause, where_clause):
@@ -91,6 +113,7 @@ def update(table_data, set_clause, where_clause):
     return table_data
 
 
+@confirm_action("удаление записи")
 def delete(table_data, where_clause):
     """Удаляет записи, соответствующие условию."""
     return [
